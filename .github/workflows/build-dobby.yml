@@ -1,0 +1,51 @@
+name: Build libDobby.a (iOS arm64)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Dobby
+        uses: actions/checkout@v4
+        with:
+          repository: jmpews/Dobby
+          fetch-depth: 1
+          submodules: recursive
+          path: Dobby
+
+      - name: Configure (iOS arm64 static)
+        run: |
+          cd Dobby
+          mkdir build && cd build
+          cmake .. -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DDOBBY_GENERATE_SHARED=OFF \
+            -DNearBranch=ON \
+            -DPlugin.SymbolResolver=ON
+
+      - name: Build
+        run: |
+          cd Dobby/build
+          cmake --build . --config Release
+
+      - name: Collect artifact
+        run: |
+          mkdir -p out
+          find Dobby/build -name "*.a" -exec cp {} out/libDobby.a \;
+          cp Dobby/include/dobby.h out/dobby.h 2>/dev/null \
+            || find Dobby -name dobby.h -exec cp {} out/dobby.h \;
+          echo "---- result ----"
+          ls -la out
+          file out/libDobby.a
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libDobby-ios-arm64
+          path: out
