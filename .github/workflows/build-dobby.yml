@@ -28,12 +28,14 @@ jobs:
             -DBUILD_SHARED_LIBS=OFF \
             -DDOBBY_GENERATE_SHARED=OFF \
             -DNearBranch=ON \
-            -DPlugin.SymbolResolver=ON
+            -DPlugin.SymbolResolver=ON \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO
 
       - name: Build
         run: |
           cd Dobby/build
-          cmake --build . --config Release
+          cmake --build . --config Release --target dobby_static
 
       - name: Collect artifact
         run: |
