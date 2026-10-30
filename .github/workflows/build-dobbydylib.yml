@@ -1,0 +1,65 @@
+name: Build libdobby.dylib (iOS arm64)
+
+# 触发方式：在仓库的 Actions 页面手动点 "Run workflow"
+# 产出：libdobby.dylib（共享库，可独立被侧载工具加载到任意 App）+ dobby.h
+#       （本配置只出共享库；若需静态 libDobby.a 请改用 DOBBY_GENERATE_SHARED=OFF 单独重编）
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest      # 云端 macOS runner，自带 Xcode + iOS SDK，免费
+    steps:
+      # 拉取 Dobby 源码（含子模块 capstone/Tinyhook 等，必须 recursive 否则编译失败）
+      - name: Checkout Dobby
+        uses: actions/checkout@v4
+        with:
+          repository: jmpews/Dobby
+          fetch-depth: 1
+          submodules: recursive
+          path: Dobby
+
+      # 用 Xcode generator 交叉编译 iOS arm64 共享库（不依赖 brew，启动更快）
+      #   DOBBY_GENERATE_SHARED=ON  → 产出 libdobby.dylib（共享）
+      #   CODE_SIGNING_*=NO         → 跳过 iOS 共享库必须的"开发团队签名"，否则编译报 Signing 错误
+      - name: Configure (iOS arm64 shared)
+        run: |
+          cd Dobby
+          mkdir build && cd build
+          cmake .. -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DDOBBY_GENERATE_SHARED=ON \
+            -DNearBranch=ON \
+            -DPlugin.SymbolResolver=ON \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO
+
+      # 编出共享库（开启 DOBBY_GENERATE_SHARED 后只有 dobby 共享目标；ALL_BUILD 最稳）
+      - name: Build
+        run: |
+          cd Dobby/build
+          cmake --build . --config Release
+
+      # 收集产物：共享库（主产物）+ 头文件；下面 libDobby.a 若未生成则自动跳过
+      - name: Collect artifact
+        run: |
+          mkdir -p out
+          find Dobby/build -name "libdobby.dylib" -exec cp {} out/ \;
+          find Dobby/build -name "libDobby.a"    -exec cp {} out/ \;   # 共享配置下通常不出现，忽略即可
+          cp Dobby/include/dobby.h out/dobby.h 2>/dev/null \
+            || find Dobby -name dobby.h -exec cp {} out/dobby.h \;
+          echo "---- result ----"
+          ls -la out
+          file out/libdobby.dylib 2>/dev/null
+          file out/libDobby.a 2>/dev/null
+
+      # 上传为可下载的 artifact（保留 90 天）
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libDobby-ios-arm64
+          path: out
